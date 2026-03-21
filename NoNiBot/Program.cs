@@ -8,7 +8,6 @@ namespace NoNiDev.NoNiBot
 {
     public class Program
     {
-        private const string TOKEN = "Token";
         private DiscordSocketClient _client;
         private readonly HttpClient _httpClient = new HttpClient();
 
@@ -17,6 +16,13 @@ namespace NoNiDev.NoNiBot
 
         public async Task MainAsync()
         {
+            DotNetEnv.Env.Load();
+            string token = Environment.GetEnvironmentVariable("TOKEN_DISCORD");
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                Console.WriteLine("Erreur : La variable DISCORD_TOKEN est introuvable !");
+                return;
+            }
             // On initialise le client ici
             var config = new DiscordSocketConfig
             {
@@ -24,30 +30,25 @@ namespace NoNiDev.NoNiBot
             };
 
             _client = new DiscordSocketClient(config);
-            _client.Log += LogAsync; // On attache une méthode pour gérer les logs
-            _client.MessageReceived += OnMessageReceived; // On attache une méthode pour gérer les messages reçus
-            _client.Ready += Client_Ready; // On attache une méthode pour gérer l'événement "Ready" (lorsque le bot est prêt)
-            _client.SlashCommandExecuted += SlashCommandHandler; // On attache une méthode pour gérer les commandes slash
+            _client.Log += LogAsync;                                // On attache une méthode pour gérer les logs
+            _client.MessageReceived += OnMessageReceived;           // On attache une méthode pour gérer les messages reçus
+            _client.Ready += Client_Ready;                          // On attache une méthode pour gérer l'événement "Ready" (lorsque le bot est prêt)
+            _client.SlashCommandExecuted += SlashCommandHandler;    // On attache une méthode pour gérer les commandes slash
 
-            // On se connecte avec le Token
-            await _client.LoginAsync(TokenType.Bot, TOKEN);
+            await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
 
-            // Cette ligne est vitale : elle empêche la console de se fermer
             await Task.Delay(-1);
         }
         private async Task OnMessageReceived(SocketMessage message)
         {
-            // 1. On vérifie que ce n'est pas le bot lui-même qui parle (pour éviter les boucles infinies)
             if (message.Author.IsBot) return;
-
-            // Commande simple : !ping
+     
             if (message.Content.ToLower() == "!ping")
             {
                 await message.Channel.SendMessageAsync("Pong ! 🏓");
             }
 
-            // Commande : !hello
             if (message.Content.ToLower() == "!hello")
             {
                 await message.Channel.SendMessageAsync($"Salut {message.Author.Mention} ! Ravi de te voir.");
@@ -61,9 +62,7 @@ namespace NoNiDev.NoNiBot
             var guildCommand = new SlashCommandBuilder()
                 .WithName("parse")
                 .WithDescription("Lance le parser de randomizer")
-                // Premier paramètre : la Seed (obligatoire)
                 .AddOption("spoiler", ApplicationCommandOptionType.Attachment, "Le spoiler", isRequired: true)
-                // Deuxième paramètre : la difficulté (optionnel avec des choix fixes)
                 .AddOption(new SlashCommandOptionBuilder()
                     .WithName("games")
                     .WithDescription("Jeux")
@@ -74,8 +73,7 @@ namespace NoNiDev.NoNiBot
                 )
                 .AddOption("config", ApplicationCommandOptionType.Attachment, "Le fichier de config", isRequired: false);
 
-            // On l'envoie à Discord (ici pour un serveur spécifique pour que ce soit instantané)
-            // Remplace ID_DE_TON_SERVEUR par l'ID de ton serveur de test
+
             await _client.GetGuild(1454155787302604853).CreateApplicationCommandAsync(guildCommand.Build());
         }
         private async Task SlashCommandHandler(SocketSlashCommand command)
@@ -83,7 +81,6 @@ namespace NoNiDev.NoNiBot
             if (command.Data.Name == "parse")
             {
                 string arguments = string.Empty;
-                // On récupère les valeurs saisies par l'utilisateur
                 var spoilerFile = (IAttachment)command.Data.Options.First(x => x.Name == "spoiler").Value;
                 if (!IsValidExtension(spoilerFile.Filename, new[] { ".txt" }))
                 {
@@ -111,17 +108,14 @@ namespace NoNiDev.NoNiBot
                     return;
                 }
 
-                // On informe l'utilisateur que le bot travaille (indispensable pour les slash commands)
                 await command.DeferAsync();
 
-                // 2. Création d'un dossier temporaire pour cette exécution
                 string runId = Guid.NewGuid().ToString().Substring(0, 8);
                 string tempPath = Path.Combine(Path.GetTempPath(), $"bot_parse_{runId}");
                 Directory.CreateDirectory(tempPath);
 
                 try
                 {
-                    // 3. Téléchargement des fichiers
                     string spoilerFilePath = Path.Combine(tempPath, spoilerFile.Filename);
                     string configFilePath = Path.Combine(tempPath, configFile.Filename);
                     try
@@ -134,8 +128,6 @@ namespace NoNiDev.NoNiBot
                         await command.FollowupAsync("Impossible de récupérer le fichier depuis les serveurs Discord.");
                         return;
                     }
-                    // 4. Préparation des arguments pour ton CLI
-                    // On passe les chemins complets des fichiers téléchargés
                     arguments += $"-c \"{configFilePath}\" \"{spoilerFilePath}\"";
 
                     // 5. Exécution
@@ -149,14 +141,13 @@ namespace NoNiDev.NoNiBot
                 }
                 finally
                 {
-                    // On appelle une méthode de nettoyage qui ne bloque pas la réponse Discord
                     _ = Task.Run(async () => {
-                        await Task.Delay(2000); // On attend 2 secondes pour laisser le temps au CLI de libérer les fichiers
+                        await Task.Delay(2000); 
                         try
                         {
                             if (Directory.Exists(tempPath))
                             {
-                                Directory.Delete(tempPath, true); // Le 'true' signifie : supprime aussi tout le contenu
+                                Directory.Delete(tempPath, true); 
                                 Console.WriteLine($"[Cleanup] Dossier temporaire supprimé : {tempPath}");
                             }
                         }
@@ -187,8 +178,6 @@ namespace NoNiDev.NoNiBot
         private async Task<string> ExecuteParser(string inputArgs)
         {
             
-
-            // 2. Configuration du processus
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = "E:\\Dev\\git\\Source\\Repos\\SpoilerArchipelagoParser\\ApplicationConsoleReader\\bin\\Release\\net10.0\\publish\\win-x86\\ApplicationConsoleReader.exe", // Assure-toi que le chemin est correct
@@ -206,18 +195,16 @@ namespace NoNiDev.NoNiBot
                     StringBuilder output = new StringBuilder();
                     process.Start();
 
-                    // Lecture asynchrone pour éviter de bloquer si la sortie est longue
                     string result = await process.StandardOutput.ReadToEndAsync();
                     string error = await process.StandardError.ReadToEndAsync();
 
-                    // On attend maximum 30 secondes que le processus finisse (sécurité timeout)
                     if (process.WaitForExit(30000))
                     {
                         return string.IsNullOrEmpty(error) ? result : $"Erreur : {error}";
                     }
                     else
                     {
-                        process.Kill(); // On force l'arrêt si c'est trop long
+                        process.Kill();
                         return "Erreur : Le parsing a pris trop de temps (Timeout).";
                     }
                 }
