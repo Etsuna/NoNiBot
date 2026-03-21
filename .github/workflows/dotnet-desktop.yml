@@ -58,7 +58,7 @@ jobs:
             -p:SelfContained=true \
             -p:PublishSingleFile=true \
             -p:PublishTrimmed=false \
-            -p:IncludeAllContentForSelfExtract=true \
+            -p:IncludeAllContentForSelfExtract=true
         done <<< "$PROJECTS"
 
     - name: Prepare upload_dir
@@ -101,14 +101,14 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'windows-2025'
       shell: pwsh
       run: |
-        $filename = "ast-${{ matrix.rid }}-${{ github.ref_name }}"
+        $filename = "NiNoBot-${{ matrix.rid }}-${{ github.ref_name }}"
         Compress-Archive -Path upload_dir\* -DestinationPath release_assets\$filename.zip
 
     - name: Create TAR.GZ archive (Linux)
       if: startsWith(github.ref, 'refs/tags/') && matrix.os != 'windows-2025'
       shell: bash
       run: |
-        filename="ast-${{ matrix.rid }}-${{ github.ref_name }}"
+        filename="NiNoBo-${{ matrix.rid }}-${{ github.ref_name }}"
         tar -czvf "release_assets/${filename}.tar.gz" -C upload_dir .
 
     - name: Create GitHub Draft Release
