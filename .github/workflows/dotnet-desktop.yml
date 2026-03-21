@@ -41,6 +41,7 @@ jobs:
         {
           echo 'PROJECTS<<EOF'
           echo "nonibot:NoNiBot/NoNiBot.csproj"
+          echo 'EOF'
         } >> "$GITHUB_ENV"
 
     - name: Publish all projects (self-contained, single-file)
