@@ -27,8 +27,16 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - name: Checkout
+    - name: Checkout main repo
       uses: actions/checkout@v4
+      with:
+        path: mainrepo
+
+    - name: Checkout SpoilerArchipelagoParser
+      uses: actions/checkout@v4
+      with:
+        repository: NicolasValette/SpoilerArchipelagoParser
+        path: SpoilerArchipelagoParser
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -40,16 +48,17 @@ jobs:
       run: |
         {
           echo 'PROJECTS<<EOF'
-          echo "nonibot:NoNiBot/NoNiBot.csproj"
+          echo "nonibot:mainrepo/NoNiBot/NoNiBot.csproj"
           echo 'EOF'
         } >> "$GITHUB_ENV"
 
-    - name: Publish all projects (self-contained, single-file)
+    - name: Publish main projects (self-contained, single-file)
       shell: bash
       run: |
         set -euo pipefail
         while IFS= read -r line; do
-          key="${line%%:*}"; proj="${line#*:}"
+          key="${line%%:*}"
+          proj="${line#*:}"
           echo "Publish $proj -> artifacts/$key"
           dotnet publish "$proj" \
             -c "${{ matrix.configuration }}" \
@@ -61,24 +70,57 @@ jobs:
             -p:IncludeAllContentForSelfExtract=true
         done <<< "$PROJECTS"
 
+    - name: Publish ApplicationConsoleReader
+      shell: bash
+      run: |
+        set -euo pipefail
+        dotnet publish "SpoilerArchipelagoParser/ApplicationConsoleReader/ApplicationConsoleReader.csproj" \
+          -c "${{ matrix.configuration }}" \
+          -r "${{ matrix.rid }}" \
+          -o "artifacts/applicationconsolereader" \
+          -p:SelfContained=true \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:IncludeAllContentForSelfExtract=true
+
     - name: Prepare upload_dir
       shell: bash
       run: |
         set -euo pipefail
         mkdir -p upload_dir
+
         if [ "${{ github.ref_type }}" = "tag" ]; then
           echo "Tag: copy without .pdb"
-          find artifacts -type f ! -iname '*.pdb' -exec cp {} upload_dir/ \;
+          find artifacts/nonibot -type f ! -iname '*.pdb' -exec cp {} upload_dir/ \;
         else
           echo "Branch: copy all files"
-          find artifacts -type f -exec cp {} upload_dir/ \;
+          find artifacts/nonibot -type f -exec cp {} upload_dir/ \;
         fi
+
+    - name: Copy ApplicationConsoleReader executable to upload_dir root
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [ "${{ matrix.rid }}" = "win-x64" ]; then
+          exe_path="$(find artifacts/applicationconsolereader -maxdepth 1 -type f -iname 'ApplicationConsoleReader.exe' | head -n 1)"
+        else
+          exe_path="$(find artifacts/applicationconsolereader -maxdepth 1 -type f -iname 'ApplicationConsoleReader' | head -n 1)"
+        fi
+
+        if [ -z "${exe_path:-}" ]; then
+          echo "ApplicationConsoleReader executable not found"
+          exit 1
+        fi
+
+        cp "$exe_path" upload_dir/
+        echo "Copied $(basename "$exe_path") to upload_dir root"
 
     - name: Copy command files (if present)
       shell: bash
       run: |
         set -euo pipefail
-        src="Install/${{ matrix.rid }}"
+        src="mainrepo/Install/${{ matrix.rid }}"
         if [ -d "$src" ] && compgen -G "$src/*" > /dev/null; then
           cp -r "$src/"* upload_dir/
           echo "Copied from $src"
@@ -101,14 +143,14 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'windows-2025'
       shell: pwsh
       run: |
-        $filename = "NiNoBot-${{ matrix.rid }}-${{ github.ref_name }}"
+        $filename = "NoNiBot-${{ matrix.rid }}-${{ github.ref_name }}"
         Compress-Archive -Path upload_dir\* -DestinationPath release_assets\$filename.zip
 
     - name: Create TAR.GZ archive (Linux)
       if: startsWith(github.ref, 'refs/tags/') && matrix.os != 'windows-2025'
       shell: bash
       run: |
-        filename="NiNoBo-${{ matrix.rid }}-${{ github.ref_name }}"
+        filename="NoNiBot-${{ matrix.rid }}-${{ github.ref_name }}"
         tar -czvf "release_assets/${filename}.tar.gz" -C upload_dir .
 
     - name: Create GitHub Draft Release
