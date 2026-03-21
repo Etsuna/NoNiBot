@@ -1,0 +1,120 @@
+name: .NET Core Self-Contained Build 2025
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+    tags:
+      - 'v*.*.*'
+      - '!v*.*.*-*'
+  pull_request:
+    branches: [ "main", "dev" ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-2025
+            rid: win-x64
+            configuration: Release
+          - os: ubuntu-latest
+            rid: linux-x64
+            configuration: Release
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Define project list
+      shell: bash
+      run: |
+        {
+          echo 'PROJECTS<<EOF'
+          echo "nonibot:NoNiBot/NoNiBot.csproj"
+        } >> "$GITHUB_ENV"
+
+    - name: Publish all projects (self-contained, single-file)
+      shell: bash
+      run: |
+        set -euo pipefail
+        while IFS= read -r line; do
+          key="${line%%:*}"; proj="${line#*:}"
+          echo "Publish $proj -> artifacts/$key"
+          dotnet publish "$proj" \
+            -c "${{ matrix.configuration }}" \
+            -r "${{ matrix.rid }}" \
+            -o "artifacts/$key" \
+            -p:SelfContained=true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:IncludeAllContentForSelfExtract=true \
+        done <<< "$PROJECTS"
+
+    - name: Prepare upload_dir
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p upload_dir
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          echo "Tag: copy without .pdb"
+          find artifacts -type f ! -iname '*.pdb' -exec cp {} upload_dir/ \;
+        else
+          echo "Branch: copy all files"
+          find artifacts -type f -exec cp {} upload_dir/ \;
+        fi
+
+    - name: Copy command files (if present)
+      shell: bash
+      run: |
+        set -euo pipefail
+        src="Install/${{ matrix.rid }}"
+        if [ -d "$src" ] && compgen -G "$src/*" > /dev/null; then
+          cp -r "$src/"* upload_dir/
+          echo "Copied from $src"
+        else
+          echo "No command files for $src"
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: NoNiBot-${{ matrix.rid }}${{ github.ref_type == 'tag' && format('-{0}', github.ref_name) || '' }}
+        path: upload_dir/
+
+    - name: Create release_assets folder
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: bash
+      run: mkdir -p release_assets
+
+    - name: Create ZIP archive (Windows)
+      if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'windows-2025'
+      shell: pwsh
+      run: |
+        $filename = "ast-${{ matrix.rid }}-${{ github.ref_name }}"
+        Compress-Archive -Path upload_dir\* -DestinationPath release_assets\$filename.zip
+
+    - name: Create TAR.GZ archive (Linux)
+      if: startsWith(github.ref, 'refs/tags/') && matrix.os != 'windows-2025'
+      shell: bash
+      run: |
+        filename="ast-${{ matrix.rid }}-${{ github.ref_name }}"
+        tar -czvf "release_assets/${filename}.tar.gz" -C upload_dir .
+
+    - name: Create GitHub Draft Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ github.ref_name }}
+        tag_name: ${{ github.ref_name }}
+        draft: true
+        files: release_assets/*
