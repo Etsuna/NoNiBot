@@ -4,6 +4,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -16,6 +17,7 @@ namespace NoNiDev.NoNiBot.DiscordBot
         private readonly HttpClient _httpClient = new HttpClient();
         public static string BasePath = Path.GetDirectoryName(Environment.ProcessPath) ?? throw new InvalidOperationException("Environment.ProcessPath is null.");
         public static CancellationTokenSource Cts = new CancellationTokenSource();
+        public static string BotVersion = GetLocalSemVer();
 
         public Bot(string token)
         {
@@ -38,7 +40,11 @@ namespace NoNiDev.NoNiBot.DiscordBot
             _client.Ready += Client_Ready;                          // On attache une méthode pour gérer l'événement "Ready" (lorsque le bot est prêt)
             _client.SlashCommandExecuted += SlashCommandHandler;    // On attache une méthode pour gérer les commandes slash
             _client.JoinedGuild += OnGuildJoined;                   // On attache une méthode pour gérer l'événement "JoinedGuild" (lorsque le bot rejoint un serveur)
-            _client.Disconnected += OnDisconnected;
+            _client.Disconnected += OnDisconnected;                 // On attache une méthode pour gérer l'événement "Disconnected" (lorsque le bot se déconnecte)
+
+            string version = $"NoNiBot v{BotVersion}";
+
+            await _client.SetCustomStatusAsync(version);            // On définit le statut personnalisé du bot pour afficher la version
 
             await _client.LoginAsync(TokenType.Bot, TOKEN);
             await _client.StartAsync();
@@ -364,5 +370,17 @@ namespace NoNiDev.NoNiBot.DiscordBot
                 return $"Erreur système : {ex.Message}";
             }
         }
+
+        public static string GetLocalSemVer()
+        {
+            var asm = Assembly.GetEntryAssembly()!;
+            var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            return string.IsNullOrWhiteSpace(info)
+                ? asm.GetName().Version?.ToString() ?? "0.0.0"
+                : Normalize(info);
+        }
+
+        private static string Normalize(string v)
+            => v.Trim().TrimStart('v', 'V').Split('+', '-', ' ').FirstOrDefault() ?? "0.0.0";
     }
 }

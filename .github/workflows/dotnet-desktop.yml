@@ -43,6 +43,17 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - name: Compute VERSION from tag
+      shell: bash
+      run: |
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          raw="${GITHUB_REF_NAME#v}"; VERSION="${raw%%-*}"
+        else
+          VERSION="0.0.0"
+        fi
+        echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+        echo "Version: $VERSION"
+
     - name: Define project list
       shell: bash
       run: |
@@ -67,7 +78,8 @@ jobs:
             -p:SelfContained=true \
             -p:PublishSingleFile=true \
             -p:PublishTrimmed=false \
-            -p:IncludeAllContentForSelfExtract=true
+            -p:IncludeAllContentForSelfExtract=true \
+            -p:Version="${{ env.VERSION }}"
         done <<< "$PROJECTS"
 
     - name: Publish ApplicationConsoleReader
